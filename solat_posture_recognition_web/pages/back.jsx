@@ -50,9 +50,10 @@ const Home = () => {
           min: supportedConstraints.height,
           ideal: 1080,
         };
-        constraints.facingMode = flip ? 'environment' : 'user';
+        constraints.facingMode = 'environment';
       }
       // const stream = await navigator.mediaDevices.getUserMedia({ video: constraints });
+      console.log("test",constraints);
       navigator.mediaDevices
         .getUserMedia(constraints)
         .then((stream) => {
