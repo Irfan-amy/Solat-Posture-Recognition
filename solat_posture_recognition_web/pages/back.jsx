@@ -163,7 +163,7 @@ const Home = () => {
   };
 
   return (
-    <div className="pose-container">
+    <div className="pose-container w-full h-screen" >
       <video
         autoPlay
         ref={(el) => {
@@ -173,7 +173,7 @@ const Home = () => {
         hidden={true}
       />
       <canvas ref={canvasRef} width={1280} height={720} />
-      <div className="absolute bottom-16 flex flex-col-reverse self-end w-full">
+      <div className="absolute bottom-2 flex flex-col-reverse self-end w-full">
         <div className="flex flex-row justify-center w-full py-8  gap-2">
           <div className="flex-none">
             <button
