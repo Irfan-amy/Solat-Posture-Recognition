@@ -25,22 +25,31 @@ const Home = () => {
   const [inputVideoReady, setInputVideoReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [flip, setFlip] = useState(true);
-  const { height, width } = useWindowDimensions();
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
+  const updateDimensions = () => {
+    setWidth(window.innerWidth);
+    setHeight(window.innerHeight);
+  };
+  useEffect(() => {
+    window.addEventListener("resize", updateDimensions);
+    return () => window.removeEventListener("resize", updateDimensions);
+  }, []);
   const inputVideoRef = useRef(null);
   const canvasRef = useRef(null);
+  const divRef = useRef(null);
   const contextRef = useRef(null);
   var videoHeight = height;
   var videoWidth = width;
-
 
   async function getMedia(flip, callback) {
     try {
       console.log(flip);
       const supportedConstraints =
         await navigator.mediaDevices.getSupportedConstraints();
-        let constraints = {
-          video: { width: { min: 1280 }, height: { min: 720 } },
-        };
+      let constraints = {
+        video: { width: { min: 1280 }, height: { min: 720 } },
+      };
       if (supportedConstraints.width && supportedConstraints.height) {
         constraints.video.width = {
           min: supportedConstraints.width,
@@ -50,25 +59,30 @@ const Home = () => {
           min: supportedConstraints.height,
           ideal: 1080,
         };
-        constraints.video.facingMode = 'environment';
+        constraints.video.facingMode = "environment";
       }
       // const stream = await navigator.mediaDevices.getUserMedia({ video: constraints });
-      console.log("test",constraints);
-      navigator.mediaDevices
-        .getUserMedia(constraints)
-        .then((stream) => {
-          if (inputVideoRef.current) {
-            inputVideoRef.current.srcObject = stream;
-          }
-          if (callback)
-            callback();
-        });
+      console.log("test", constraints);
+      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+        if (inputVideoRef.current) {
+          inputVideoRef.current.srcObject = stream;
+        }
+        if (callback) callback();
+      });
     } catch (error) {
       console.error(error);
     }
   }
-
-  
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWidth(window.innerWidth);
+      setHeight(window.innerHeight);
+      divRef.current.width = width;
+      divRef.current.height = height;
+      canvasRef.current.width = divRef.current.width;
+      canvasRef.current.height = divRef.current.height;
+    }
+  });
   useEffect(() => {
     if (!inputVideoReady) {
       return;
@@ -76,7 +90,7 @@ const Home = () => {
     if (inputVideoRef.current && canvasRef.current) {
       console.log("rendering");
       contextRef.current = canvasRef.current.getContext("2d");
-      
+
       const pose = new Pose({
         locateFile: (file) =>
           `https://cdn.jsdelivr.net/npm/@mediapipe/pose@${VERSION}/${file}`,
@@ -104,17 +118,13 @@ const Home = () => {
       if (navigator.mediaDevices) {
         getMedia(false, sendToMediaPipe);
       }
-
-      
-      
     }
   }, [inputVideoReady]);
 
   const onResults = (results) => {
     if (canvasRef.current && contextRef.current) {
       setLoaded(true);
-      canvasRef.current.width = width;
-      canvasRef.current.height = height;
+      
       contextRef.current.save();
       contextRef.current.clearRect(
         0,
@@ -163,7 +173,7 @@ const Home = () => {
   };
 
   return (
-    <div className="pose-container w-full h-screen" >
+    <div ref={divRef} className="pose-container w-screen h-screen">
       <video
         autoPlay
         ref={(el) => {
@@ -173,9 +183,8 @@ const Home = () => {
         hidden={true}
       />
       <canvas ref={canvasRef} width={1280} height={720} />
-      <div className="absolute bottom-2 flex flex-col-reverse self-end w-full bg-white">
+      <div className="absolute bottom-2 flex flex-col-reverse self-end w-screen ">
         <div className="flex flex-row justify-center w-full py-8  gap-2">
-          
           <div className="flex-none">
             <div className="self-center bg-blue-500 text-white text-[2.5vh] font-bold py-[2vh] px-[4vh] rounded-full">
               Status
