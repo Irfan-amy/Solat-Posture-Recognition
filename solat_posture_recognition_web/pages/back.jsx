@@ -24,7 +24,7 @@ import {
 const Home = () => {
   const [inputVideoReady, setInputVideoReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [flip, setFlip] = useState(false);
+  const [flip, setFlip] = useState(true);
   const { height, width } = useWindowDimensions();
   const inputVideoRef = useRef(null);
   const canvasRef = useRef(null);
