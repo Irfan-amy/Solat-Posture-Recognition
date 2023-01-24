@@ -4,10 +4,12 @@ import Image from "next/image";
 import React, { useRef, useEffect, useState } from "react";
 import * as cam from "@mediapipe/camera_utils";
 import Webcam from "react-webcam";
+import * as tf from "@tensorflow/tfjs";
 import {
   Results,
   Pose,
   POSE_CONNECTIONS,
+  POSE_LANDMARKS,
   POSE_LANDMARKS_LEFT,
   POSE_LANDMARKS_RIGHT,
   POSE_LANDMARKS_NEUTRAL,
@@ -27,20 +29,36 @@ const Home = () => {
   const [flip, setFlip] = useState(true);
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
+  const [text, setText] = useState("0");
   const updateDimensions = () => {
     setWidth(window.innerWidth);
     setHeight(window.innerHeight);
   };
+
   useEffect(() => {
     window.addEventListener("resize", updateDimensions);
     return () => window.removeEventListener("resize", updateDimensions);
   }, []);
+
   const inputVideoRef = useRef(null);
   const canvasRef = useRef(null);
   const divRef = useRef(null);
   const contextRef = useRef(null);
   var videoHeight = height;
   var videoWidth = width;
+
+  function calculateAngle(a, b, c) {
+    var ba = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    var bc = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+
+    var cosineAngle =
+      (ba[0] * bc[0] + ba[1] * bc[1] + ba[2] * bc[2]) /
+      (Math.sqrt(ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]) *
+        Math.sqrt(bc[0] * bc[0] + bc[1] * bc[1] + bc[2] * bc[2]));
+    var angle = Math.acos(cosineAngle);
+
+    return (angle * 180) / Math.PI;
+  }
 
   async function getMedia(flip, callback) {
     try {
@@ -60,6 +78,7 @@ const Home = () => {
           ideal: 1080,
         };
         constraints.video.facingMode = "environment";
+        console.log(supportedConstraints.width, supportedConstraints.height);
       }
       // const stream = await navigator.mediaDevices.getUserMedia({ video: constraints });
       console.log("test", constraints);
@@ -84,6 +103,53 @@ const Home = () => {
     }
   });
   useEffect(() => {
+    let testCases = [
+      {
+        points: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
+        expected: 120,
+      },
+      {
+        points: [
+          [2, 3, 4],
+          [5, 6, 7],
+          [8, 9, 10],
+        ],
+        expected: 33.69006752597978,
+      },
+      {
+        points: [
+          [-1, 0, 0],
+          [0, -1, 0],
+          [0, 0, -1],
+        ],
+        expected: 120,
+      },
+      {
+        points: [
+          [-2, -3, -4],
+          [-5, -6, -7],
+          [-8, -9, -10],
+        ],
+        expected: 33.69006752597978,
+      },
+    ];
+
+    testCases.forEach(({ points, expected }) => {
+      let angle = calculateAngle(points[0], points[1], points[2]);
+      console.log(`Expected: ${expected} , Test Result : ${angle}`);
+    });
+
+    tf.loadLayersModel("/model.json").then((model) => {
+      const inputData = tf.tensor2d([[54, 54, 68]]);
+
+      // Make predictions
+      const predictions = model.predict(inputData);
+      console.log(predictions.dataSync());
+    });
     if (!inputVideoReady) {
       return;
     }
@@ -122,9 +188,15 @@ const Home = () => {
   }, [inputVideoReady]);
 
   const onResults = (results) => {
+    console.log(
+      inputVideoRef.current.videoWidth,
+      inputVideoRef.current.videoHeight
+    );
+    setText(inputVideoRef.current.videoWidth + " " + inputVideoRef.current.videoHeight)
     if (canvasRef.current && contextRef.current) {
       setLoaded(true);
-      
+
+      if (results) predict(results.poseLandmarks);
       contextRef.current.save();
       contextRef.current.clearRect(
         0,
@@ -144,33 +216,356 @@ const Home = () => {
           contextRef.current,
           results.poseLandmarks,
           POSE_CONNECTIONS,
-          { visibilityMin: 0.65, color: "white" }
+          { visibilityMin: 0.75, color: "white" }
         );
         drawLandmarks(
           contextRef.current,
           Object.values(POSE_LANDMARKS_LEFT).map(
             (index) => results.poseLandmarks[index]
           ),
-          { visibilityMin: 0.65, color: "white", fillColor: "rgb(255,138,0)" }
+          { visibilityMin: 0.75, color: "white", fillColor: "rgb(255,138,0)" }
         );
         drawLandmarks(
           contextRef.current,
           Object.values(POSE_LANDMARKS_RIGHT).map(
             (index) => results.poseLandmarks[index]
           ),
-          { visibilityMin: 0.65, color: "white", fillColor: "rgb(0,217,231)" }
+          { visibilityMin: 0.75, color: "white", fillColor: "rgb(0,217,231)" }
         );
         drawLandmarks(
           contextRef.current,
           Object.values(POSE_LANDMARKS_NEUTRAL).map(
             (index) => results.poseLandmarks[index]
           ),
-          { visibilityMin: 0.65, color: "white", fillColor: "white" }
+          { visibilityMin: 0.75, color: "white", fillColor: "white" }
         );
       }
       contextRef.current.restore();
     }
   };
+
+  function predict(landmarks) {
+    if (landmarks) if (landmarks.length < 33) return;
+    if (
+      ((landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ELBOW].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_WRIST].visibility > 0.75) ||
+        (landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_ELBOW].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_WRIST].visibility > 0.75)) &&
+      ((landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75) ||
+        (landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75)) &&
+      ((landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ANKLE].visibility > 0.75) ||
+        (landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75 &&
+          landmarks[POSE_LANDMARKS.RIGHT_ANKLE].visibility > 0.75))
+    ) {
+      console.log("Pass");
+      if (
+        landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ELBOW].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_WRIST].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_ELBOW].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_WRIST].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_ELBOW].x +
+              landmarks[POSE_LANDMARKS.RIGHT_ELBOW].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_ELBOW].y +
+              landmarks[POSE_LANDMARKS.RIGHT_ELBOW].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_ELBOW].z +
+              landmarks[POSE_LANDMARKS.RIGHT_ELBOW].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_WRIST].x +
+              landmarks[POSE_LANDMARKS.RIGHT_WRIST].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_WRIST].y +
+              landmarks[POSE_LANDMARKS.RIGHT_WRIST].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_WRIST].z +
+              landmarks[POSE_LANDMARKS.RIGHT_WRIST].z) *
+              0.5,
+          ]
+        );
+
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ELBOW].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_WRIST].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].z,
+          ]
+        );
+
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_ELBOW].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_WRIST].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_ELBOW].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_WRIST].z,
+          ]
+        );
+        data.append(angle);
+      } else print("Error");
+
+      if (
+        landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z +
+              landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].x +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].y +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].z +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].x +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].y +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].z +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].z) *
+              0.5,
+          ]
+        );
+
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.LEFT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_HIP].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].z,
+          ]
+        );
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.RIGHT_SHOULDER].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_SHOULDER].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_HIP].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].z,
+          ]
+        );
+        data.append(angle);
+      } else print("Error");
+
+      if (
+        landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ANKLE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_ANKLE].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].x +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].y +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_HIP].z +
+              landmarks[POSE_LANDMARKS.RIGHT_HIP].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].x +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].y +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_KNEE].z +
+              landmarks[POSE_LANDMARKS.RIGHT_KNEE].z) *
+              0.5,
+          ],
+          [
+            (landmarks[POSE_LANDMARKS.LEFT_ANKLE].x +
+              landmarks[POSE_LANDMARKS.RIGHT_ANKLE].x) *
+              0.5 *
+              image_width,
+            (landmarks[POSE_LANDMARKS.LEFT_ANKLE].y +
+              landmarks[POSE_LANDMARKS.RIGHT_ANKLE].y) *
+              0.5 *
+              image_height,
+            (landmarks[POSE_LANDMARKS.LEFT_ANKLE].z +
+              landmarks[POSE_LANDMARKS.RIGHT_ANKLE].z) *
+              0.5,
+          ]
+        );
+
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.LEFT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.LEFT_ANKLE].visibility > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_HIP].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].z,
+          ]
+        );
+        data.append(angle);
+      } else if (
+        landmarks[POSE_LANDMARKS.RIGHT_HIP].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_KNEE].visibility > 0.75 &&
+        landmarks[POSE_LANDMARKS.RIGHT_ANKLE].pres > 0.75
+      ) {
+        angle = calculate_angle(
+          [
+            landmarks[POSE_LANDMARKS.LEFT_HIP].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_HIP].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_KNEE].z,
+          ],
+          [
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].x * image_width,
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].y * image_height,
+            landmarks[POSE_LANDMARKS.LEFT_ANKLE].z,
+          ]
+        );
+        data.append(angle);
+      } else print("Error");
+    }
+  }
 
   return (
     <div ref={divRef} className="pose-container w-screen h-screen">
@@ -180,14 +575,14 @@ const Home = () => {
           inputVideoRef.current = el;
           setInputVideoReady(!!el);
         }}
-        hidden={true}
+        // hidden={true}
       />
       <canvas ref={canvasRef} width={1280} height={720} />
       <div className="absolute bottom-2 flex flex-col-reverse self-end w-screen ">
         <div className="flex flex-row justify-center w-full py-8  gap-2">
           <div className="flex-none">
             <div className="self-center bg-blue-500 text-white text-[2.5vh] font-bold py-[2vh] px-[4vh] rounded-full">
-              Status
+              {text}
             </div>
           </div>
         </div>

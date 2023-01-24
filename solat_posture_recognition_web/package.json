@@ -11,6 +11,7 @@
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/hands": "^0.4.1646424915",
     "@mediapipe/pose": "^0.5.1635988162",
+    "@tensorflow/tfjs": "^4.2.0",
     "next": "latest",
     "react": "^18.2.0",
     "react-dom": "18.2.0",
