@@ -196,9 +196,7 @@ const Home = () => {
   }, [inputVideoReady]);
 
   const onResults = (results) => {
-    setText(
-      inputVideoRef.current.videoWidth + " " + inputVideoRef.current.videoHeight
-    );
+    
     if (canvasRef.current && contextRef.current) {
       setLoaded(true);
 
@@ -581,9 +579,9 @@ const Home = () => {
         if (model) {
           const labels = ["Sujud","Jalsa","Ruku"]
           const predictions = model.predict(input).dataSync();
-          const predictionLabel = predictions.indexOf(Math.max(...predictions));
+          const predictionLabel = labels[predictions.indexOf(Math.max(...predictions))];
           setText(predictionLabel);
-          console.log(predictions.indexOf(Math.max(...predictions)));
+          console.log(predictionLabel);
         }
       }
     } catch (e) {
